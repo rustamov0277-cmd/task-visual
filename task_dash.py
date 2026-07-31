@@ -62,6 +62,8 @@ def status_of(deadline, holat):
         return "done"
     if holat == "Rad etildi":
         return "rejected"
+    if str(holat or "").startswith("Yopildi"):
+        return "closed"
     dt = parse_dl(deadline)
     if not dt:
         return "none"
@@ -119,14 +121,14 @@ def collect():
 
 
 def build_people(tasks):
-    """Ҳар ходим бўйича статистика + балл."""
     P = {}
     for t in tasks:
         if not t["who"]:
             continue
         p = P.setdefault(t["who"], {"name": t["who"], "total": 0, "ontime": 0,
                                     "late": 0, "overdue": 0, "rejected": 0,
-                                    "open": 0, "today": 0, "check": 0, "stars": []})
+                                    "closed": 0, "open": 0, "today": 0,
+                                    "check": 0, "stars": []})
         p["total"] += 1
         if t["holat"] == "Bajarildi":
             if t["late"]:
@@ -137,6 +139,8 @@ def build_people(tasks):
                 p["stars"].append(t["baho"])
         elif t["st"] == "rejected":
             p["rejected"] += 1
+        elif t["st"] == "closed":
+            p["closed"] += 1
         else:
             if t["holat"] == "Tekshiruvda":
                 p["check"] += 1
@@ -149,7 +153,7 @@ def build_people(tasks):
 
     out = []
     for p in P.values():
-        base = p["ontime"] + p["late"] + p["overdue"] + p["rejected"]
+        base = p["ontime"] + p["late"] + p["overdue"] + p["rejected"] + p["closed"]
         p["ontime_pct"] = round(p["ontime"] / base * 100, 1) if base else None
         p["avg_star"] = round(sum(p["stars"]) / len(p["stars"]), 1) if p["stars"] else None
         disc = p["ontime_pct"] or 0
@@ -194,9 +198,7 @@ border-radius:11px;font-size:14px;cursor:pointer;font-weight:600;font-family:inh
 overflow-x:auto;margin-top:6px;box-shadow:0 1px 3px rgba(15,23,42,.05)}
 table{width:100%;border-collapse:collapse;min-width:820px}
 th{text-align:right;color:var(--mut);font-size:11px;font-weight:700;padding:13px 11px;
-text-transform:uppercase;border-bottom:2px solid var(--line);white-space:nowrap;
-background:#fafbfd;cursor:pointer;user-select:none}
-th:hover{color:var(--blue)}
+text-transform:uppercase;border-bottom:2px solid var(--line);white-space:nowrap;background:#fafbfd}
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
 td{padding:12px 11px;text-align:right;font-size:14px;border-bottom:1px solid var(--line2);font-weight:500}
 tbody tr:hover{background:#f8fafc}
@@ -254,7 +256,7 @@ border-left:4px solid var(--blue);border-radius:0 10px 10px 0;font-weight:500}
 
 <script>
 var D=__PAYLOAD__;
-var FLT='open', WHO=null, SK=null, SD=-1;
+var FLT='open', WHO=null;
 
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function n0(v){return v==null?'—':v.toLocaleString('ru-RU')}
@@ -262,13 +264,15 @@ function pc(v){return v==null?'—':v+'%'}
 function bd(t,c){return '<span class="bd '+c+'">'+t+'</span>'}
 
 var STL={done:['✅ Бажарилди','g'],overdue:['🔴 Муддат ўтди','r2'],
- today:['🟡 Бугун','a'],open:['🔵 Очиқ','b'],rejected:['🚫 Рад','gr'],none:['—','gr']};
+ today:['🟡 Бугун','a'],open:['🔵 Очиқ','b'],rejected:['🚫 Рад','gr'],
+ closed:['⛔ Ёпилди','gr'],none:['—','gr']};
 
 function kpis(){
- var t=D.tasks,k={done:0,overdue:0,today:0,open:0,check:0,rej:0};
+ var t=D.tasks,k={done:0,overdue:0,today:0,open:0,check:0,rej:0,closed:0};
  for(var i=0;i<t.length;i++){var x=t[i];
   if(x.holat==='Bajarildi')k.done++;
   else if(x.st==='rejected')k.rej++;
+  else if(x.st==='closed')k.closed++;
   else{if(x.holat==='Tekshiruvda')k.check++;
    if(x.st==='overdue')k.overdue++;else if(x.st==='today')k.today++;else k.open++}}
  var st=[],n=0;
@@ -280,14 +284,15 @@ function kpis(){
   K('Жами',t.length)+K('Бажарилди',k.done,'#15803d')+
   K('Муддат ўтди',k.overdue,'#b91c1c')+K('Бугун',k.today,'#b45309')+
   K('Очиқ',k.open,'#1d4ed8')+K('Текширувда',k.check)+
-  K('Ўртача баҳо','⭐'+avg);
+  K('Ёпилди',k.closed)+K('Ўртача баҳо','⭐'+avg);
 }
 
 function people(){
  var p=D.people,el=document.getElementById('ppl');
  if(!p.length){el.innerHTML='<div class="empty">Маълумот йўқ</div>';return}
  var h='<table><thead><tr><th>#</th><th>Ходим</th><th>Балл</th><th>Ўз вақтида</th>'+
-  '<th>Кечикиб</th><th>Муддат ўтган</th><th>Очиқ</th><th>Интизом</th><th>Баҳо</th></tr></thead><tbody>';
+  '<th>Кечикиб</th><th>Муддат ўтган</th><th>Ёпилган</th><th>Очиқ</th>'+
+  '<th>Интизом</th><th>Баҳо</th></tr></thead><tbody>';
  for(var i=0;i<p.length;i++){var s=p[i];
   var sc=s.score>=85?'g':s.score>=60?'a':'r2';
   h+='<tr class="clk" data-w="'+esc(s.name)+'"><td class="r">'+(i+1)+'</td>'+
@@ -296,19 +301,19 @@ function people(){
    '<td data-l="Ўз вақтида">'+n0(s.ontime)+'</td>'+
    '<td data-l="Кечикиб">'+(s.late?bd(s.late,'a'):'—')+'</td>'+
    '<td data-l="Муддат ўтган">'+(s.overdue?bd(s.overdue,'r2'):'—')+'</td>'+
+   '<td data-l="Ёпилган">'+(s.closed?bd(s.closed,'gr'):'—')+'</td>'+
    '<td data-l="Очиқ">'+n0(s.open+s.today+s.check)+'</td>'+
    '<td data-l="Интизом">'+pc(s.ontime_pct)+'</td>'+
    '<td data-l="Баҳо">'+(s.avg_star?'⭐'+s.avg_star:'—')+'</td></tr>';
  }
  el.innerHTML=h+'</tbody></table>';
  el.querySelectorAll('tr.clk').forEach(function(tr){tr.onclick=function(){
-  var w=tr.getAttribute('data-w');
-  WHO=(WHO===w)?null:w;tasks()}});
+  var w=tr.getAttribute('data-w');WHO=(WHO===w)?null:w;tasks()}});
 }
 
 function filters(){
  var f=[['all','Барчаси'],['open','Очиқ'],['overdue','Муддат ўтди'],
-        ['check','Текширувда'],['done','Бажарилди']];
+        ['check','Текширувда'],['done','Бажарилди'],['closed','Ёпилган']];
  var h='';
  for(var i=0;i<f.length;i++)h+='<button class="btn'+(FLT===f[i][0]?' on':'')+
   '" data-f="'+f[i][0]+'">'+f[i][1]+'</button>';
@@ -329,18 +334,18 @@ function tasks(){
   if(FLT==='done')return x.holat==='Bajarildi';
   if(FLT==='check')return x.holat==='Tekshiruvda';
   if(FLT==='overdue')return x.st==='overdue';
-  if(FLT==='open')return x.holat!=='Bajarildi'&&x.st!=='rejected';
+  if(FLT==='closed')return x.st==='closed';
+  if(FLT==='open')return x.holat!=='Bajarildi'&&x.st!=='rejected'&&x.st!=='closed';
   return true});
  var el=document.getElementById('tbl');
  if(!r.length){el.innerHTML='<div class="empty">Вазифа йўқ</div>';return}
- var ord={overdue:0,today:1,open:2,none:3,rejected:4,done:5};
+ var ord={overdue:0,today:1,open:2,none:3,rejected:4,closed:5,done:6};
  r.sort(function(a,b){var d=(ord[a.st]||9)-(ord[b.st]||9);if(d)return d;
   return (a.dl||'')<(b.dl||'')?-1:1});
  var h='<table><thead><tr><th>#</th><th>Вазифа</th><th>Ходим</th><th>Муддат</th>'+
   '<th>Ҳолат</th><th>Тасдиқ</th><th>Цена слова</th><th>Баҳо</th></tr></thead><tbody>';
  for(var i=0;i<r.length;i++){var x=r[i];
-  var s=STL[x.st]||STL.none;
-  var extra='';
+  var s=STL[x.st]||STL.none, extra='';
   if(x.holat==='Tekshiruvda')s=['🔍 Текширувда','b'];
   if(x.holat==='Qayta bajarilsin')s=['🔁 Қайта','a'];
   if(x.late)extra=' <span class="bd a">кечикиб</span>';
